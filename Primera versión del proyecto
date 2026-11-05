@@ -1,0 +1,95 @@
+param(
+    [Parameter(Mandatory=$true)][string]$Nombre,
+    [string]$Plantilla = "Windows11 Laboratorio",
+    [string]$Snapshot  = "base",
+    [int]$RAM  = 4096,
+    [int]$CPUs = 2
+)
+
+$vbox = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+$dir  = "$env:USERPROFILE\VirtualBox VMs\$Nombre"
+
+# Evita el error de carpeta duplicada
+if (Test-Path $dir) {
+    Write-Host "Ya existe la carpeta $dir. Elige otro nombre o bórrala." -ForegroundColor Yellow
+    exit 1
+}
+
+& $vbox clonevm $Plantilla --snapshot $Snapshot --options link --name $Nombre --register
+if ($LASTEXITCODE -ne 0) { Write-Host "Falló el clonado" -ForegroundColor Red; exit 1 }
+
+& $vbox modifyvm $Nombre --memory $RAM --cpus $CPUs
+Write-Host "Puesto $Nombre creado con $RAM MB y $CPUs CPUs" -ForegroundColor Green
+param(
+    [string]$Plantilla = "Windows11 Laboratorio",
+    [switch]$SinSnapshot
+)
+
+$vbox  = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+$fecha = Get-Date -Format "yyyy-MM-dd_HH-mm"
+$carpeta = "C:\Proyecto\informes"
+New-Item -ItemType Directory -Path $carpeta -Force | Out-Null
+
+# Lista de puestos (todas las VMs menos la plantilla)param([Para# Plan de mantenimiento y optimización de estaciones de trabajo virtualizadas
+
+Laboratorio de puestos de trabajo Windows 11 sobre VirtualBox, gestionado con scripts de PowerShell y VBoxManage.
+
+## Escenario
+Una plantilla Windows 11 y clones enlazados que actúan como puestos. Laboratorio de 5 puestos, proyectable a un servidor con más recursos.
+
+## Scripts
+- deploy-vm.ps1: crea un puesto a partir de la plantilla (clon enlazado) con RAM y CPUs configurables.
+- mantenimiento.ps1: toma un snapshot de cada puesto y genera un informe CSV en la carpeta informes.
+- remove-vm.ps1: elimina un puesto (protege la plantilla).
+
+## Uso
+
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+    .\deploy-vm.ps1 -Nombre "Puesto-06"
+    .\mantenimiento.ps1 -SinSnapshot
+    .\remove-vm.ps1 -Nombre "Puesto-06"
+
+## Requisitos
+- Windows con VirtualBox instalado (ruta por defecto).
+- Una VM plantilla llamada "Windows11 Laboratorio" con un snapshot llamado "base".
+
+## Resultados medidos
+- Clon enlazado: casi 0 GB al crearse. Clon completo: 23,6 GB.
+- Creación de un puesto en segundos.
+
+## Limitaciones y trabajo futuro
+- La tarea programada semanal está registrada, pero su ejecución automática en portátil depende de la batería y la sesión.
+- Pendiente: rotación de snapshots, configuración con Ansible y escalado a servidor.
+meter(Mandatory=$true)][string]$Nombre)
+$vbox = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+if ($Nombre -eq "Windows11 Laboratorio") { Write-Host "No se puede borrar la plantilla." -ForegroundColor Red; exit 1 }
+& $vbox unregistervm $Nombre --delete
+Write-Host "Puesto $Nombre eliminado" -ForegroundColor Green
+
+$vms = & $vbox list vms | ForEach-Object { ($_ -split '"')[1] } | Where-Object { $_ -ne $Plantilla }
+
+$informe = foreach ($vm in $vms) {
+    $info   = & $vbox showvminfo $vm --machinereadable
+    $estado = (($info | Select-String '^VMState=').ToString().Split('=')[1]).Trim('"')
+    $ram    = ($info | Select-String '^memory=').ToString().Split('=')[1]
+    $cpu    = ($info | Select-String '^cpus=').ToString().Split('=')[1]
+
+    if (-not $SinSnapshot) {
+        & $vbox snapshot $vm take "auto-$fecha" | Out-Null
+        $snap = "auto-$fecha"
+    } else { $snap = "-" }
+
+    [PSCustomObject]@{
+        VM       = $vm
+        Estado   = $estado
+        RAM_MB   = $ram
+        CPUs     = $cpu
+        Snapshot = $snap
+        Fecha    = $fecha
+    }
+}
+
+$archivo = "$carpeta\informe-$fecha.csv"
+$informe | Export-Csv $archivo -NoTypeInformation -Encoding UTF8
+$informe | Format-Table -AutoSize
+Write-Host "Informe guardado en $archivo" -ForegroundColor Green
