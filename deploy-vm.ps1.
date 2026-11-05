@@ -1,0 +1,1 @@
+Get-Content C:\Proyecto\deploy-vm.ps1 -Raw | Set-Clipboard
